@@ -1,0 +1,16 @@
+{
+  "name": "formbot",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Ali Irani",
+  "license": "ISC",
+  "dependencies": {
+    "async-polling": "^0.2.1",
+    "feedparser": "^2.2.1",
+    "html-to-text": "^3.3.0"
+  }
+}
