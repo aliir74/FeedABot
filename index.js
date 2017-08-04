@@ -16,14 +16,14 @@ var userSchema = mongoose.Schema({
     subscription: Number
 });
 
-var userModel = mongoose.model(userSchema)
+var userModel = mongoose.model('userModel', userSchema)
 
 var feedSchema = mongoose.Schema({
     links: [String],
     users: [{type: mongoose.Schema.Types.ObjectId, ref: 'userModel'}]
 })
 
-var feedModel = mongoose.model(feedSchema)
+var feedModel = mongoose.model('feedModel', feedSchema)
 
 
 
@@ -36,12 +36,32 @@ const bot = new TelegramBot(token, {polling: true});
 var feed = []
 let id = 0
 
-bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, 'به ربات خبرخوان خوش آمده‌اید!')
-    var newUser = new userModel({chatId: msg.chat.id, subscription: 0})
-    //feed[msg.chat.id] = []
-    //createPolling(msg.chat.id)
-})
+bot.on('message', (msg) => {
+    const chatId = msg.chat.id;
+    if(msg.text == "/start") {
+        userModel.find({chatId: chatId}, function (err, user) {
+            if(err) {
+                console.log('err')
+                return
+            }
+            console.log(user)
+            if(user.length == 0) {
+                bot.sendMessage(msg.chat.id, 'به ربات خبرخوان خوش آمدید!')
+                var newUser = new userModel({chatId: chatId, subscription: 0})
+                newUser.save(function (err) {
+                    if(err) {
+                        console.log(err)
+                    } else {
+                        console.log('saved')
+                    }
+                })
+                console.log(newUser)
+            } else {
+                bot.sendMessage(chatId, 'شما قبلا ثبت نام کرده‌اید!')
+            }
+        })
+    }
+});
 
 
 function createPolling(index) {
