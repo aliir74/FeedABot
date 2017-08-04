@@ -8,7 +8,7 @@ var mongoose = require('mongoose');
 let pollingTime = 10000
 let startPollingDelay = 30000
 
-mongoose.connect('mongodb://localhost/t28');
+mongoose.connect('mongodb://localhost/t32');
 var db = mongoose.connection;
 db.on('error', console.error.bind(console, 'connection error:'));
 db.once('open', function() {
@@ -107,27 +107,26 @@ bot.on('message', (msg) => {
                 if(feed.length == 0) {
                     var posts = []
                     var siteFeed = new feedModel({link: site, posts: posts, users: [chatUser._id]})
-                    updatePostLinks(siteFeed, chatId)
-                    bot.sendMessage(chatId, 'سایت '+siteFeed.link+' به خبرخوان شما اضافه شد '+'\u{1F60A}')
-                    setTimeout(function () {
-                        siteFeed.save(function (err) {
-                            if(err) {
-                                console.log('site feed err: '+ siteFeed)
-                            } else {
-                                console.log('site feed saved: '+ siteFeed)
-                            }
-                        })
-                        console.log('start Poling')
-                        chatUser.feeds.push(siteFeed._id)
-                        chatUser.save()
-                        createPolling(siteFeed, pollingTime)
-                    }, startPollingDelay);
+                    updatePostLinks(siteFeed, chatId, chatUser)
+                    //call next function in end of updatePostLInks
 
                 } else {
-                    feed[0].users.push(chatUser._id)
-                    feed[0].save()
-                    chatUser.feeds.push(feed[0]._id)
-                    chatUser.save()
+                    if (feed[0].users.find(function (e) {
+                            return e.toString() == chatUser._id.toString()
+                        }) == undefined) {
+                        bot.sendMessage(chatId, 'سایت '+feed[0].link+' به خبرخوان شما اضافه شد '+'\u{1F60A}')
+                        feed[0].users.push(chatUser._id)
+                        feed[0].save()
+                    } else {
+                        bot.sendMessage(chatId, 'سایت '+feed[0].link+' قبلا به خبرخوان شما اضافه شده است!')
+                    }
+                    if (chatUser.feeds.find(function (e) {
+                            return e.toString() == feed[0]._id.toString()
+                        }) == undefined) {
+                        chatUser.feeds.push(feed[0]._id)
+                        chatUser.save()
+                    }
+
                 }
             })
         })
@@ -154,7 +153,7 @@ function createNewUser(chatId, msg) {
     return newUser
 }
 
-function updatePostLinks(feed, chatId) {
+function updatePostLinks(feed, chatId, chatUser) {
     req = request(feed.link)
     if(req instanceof Error) {
         console.log('request err', err)
@@ -189,8 +188,28 @@ function updatePostLinks(feed, chatId) {
         while (item = stream.read()) {
             feed.posts.push(item.link)
         }
-        feed.save()
     })
+
+    feedparser.on('end', function () {
+        feed.save()
+        next(chatId, feed, chatUser)
+    })
+}
+
+function next(chatId, siteFeed, chatUser) {
+    bot.sendMessage(chatId, 'سایت '+siteFeed.link+' به خبرخوان شما اضافه شد '+'\u{1F60A}')
+    siteFeed.save(function (err) {
+        if(err) {
+            console.log('site feed err: '+ siteFeed)
+        } else {
+            console.log('site feed saved: '+ siteFeed)
+        }
+    })
+    console.log('start Poling')
+    chatUser.feeds.push(siteFeed._id)
+    chatUser.save()
+    createPolling(siteFeed, pollingTime)
+
 }
 
 function createPolling(feed, delay) {
