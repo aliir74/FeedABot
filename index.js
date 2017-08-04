@@ -4,7 +4,7 @@ var request = require('request'); // for fetching the feed
 var htmlToText = require('html-to-text');
 var AsyncPolling = require('async-polling');
 var mongoose = require('mongoose');
-mongoose.connect('mongodb://localhost/test');
+mongoose.connect('mongodb://localhost/ttt');
 var db = mongoose.connection;
 db.on('error', console.error.bind(console, 'connection error:'));
 db.once('open', function() {
@@ -19,11 +19,20 @@ var userSchema = mongoose.Schema({
 var userModel = mongoose.model('userModel', userSchema)
 
 var feedSchema = mongoose.Schema({
-    links: [String],
+    link: String,
+    posts: [String],
     users: [{type: mongoose.Schema.Types.ObjectId, ref: 'userModel'}]
 })
 
 var feedModel = mongoose.model('feedModel', feedSchema)
+
+feedModel.find({}, function (err, result) {
+    console.log('feeds: ', result)
+})
+
+userModel.find({}, function (err, result) {
+    console.log('users: ', result)
+})
 
 
 
@@ -46,31 +55,104 @@ bot.on('message', (msg) => {
             }
             console.log(user)
             if(user.length == 0) {
-                bot.sendMessage(msg.chat.id, 'به ربات خبرخوان خوش آمدید!')
-                var newUser = new userModel({chatId: chatId, subscription: 0})
-                newUser.save(function (err) {
-                    if(err) {
-                        console.log(err)
-                    } else {
-                        console.log('saved')
-                    }
-                })
-                console.log(newUser)
+                createNewUser(chatId)
             } else {
                 bot.sendMessage(chatId, 'شما قبلا ثبت نام کرده‌اید!')
             }
         })
+    } else if(msg.text.slice(0, 8) == '/addfeed') {
+        var chatUser
+        userModel.find({chatId: chatId}, function (err, user) {
+            if(user.length == 0) {
+                chatUser = createNewUser(chatId)
+            } else {
+                chatUser = user[0]
+            }
+        })
+        var site = msg.text.slice(9, msg.text.length)
+        site = site.replace(/\s/g, '')
+        var prefix = 'http://';
+        if (site.substr(0, prefix.length) !== prefix)
+        {
+            site = prefix + site;
+        }
+        feedModel.find({link: site}, function (err, feed) {
+            if(feed.length == 0) {
+                var posts = getRssPostLinks(site)
+                var siteFeed = new feedModel({link: site, posts: posts, users: [chatUser]})
+                siteFeed.save(function (err) {
+                    if(err) {
+                        console.log('site feed err: '+ siteFeed)
+                    } else {
+                        console.log('site feed saved: '+ siteFeed)
+                    }
+                })
+                createPolling(siteFeed, 10000)
+            } else {
+                feed[0].users.push(chatUser)
+            }
+        })
     }
-});
+})
 
+function createNewUser(chatId) {
+    bot.sendMessage(chatId, 'به ربات خبرخوان خوش آمدید!')
+    var newUser = new userModel({chatId: chatId, subscription: 0})
+    newUser.save(function (err) {
+        if(err) {
+            console.log(err)
+        } else {
+            console.log('saved')
+        }
+    })
+    console.log(newUser)
+    return newUser
+}
 
-function createPolling(index) {
+function getRssPostLinks(url) {
+    var ret = []
+    req = request(url)
+    var feedparser = new FeedParser([]);
+
+    req.on('error', function (error) {
+        //bot.sendMessage(id, 'error on request')
+    });
+
+    req.on('response', function (res) {
+        var stream = this; // `this` is `req`, which is a stream
+
+        if (res.statusCode !== 200) {
+            bot.sendMessage(index, 'err'+str(new Error('Bad status code')))
+        }
+        else {
+            stream.pipe(feedparser);
+        }
+    })
+    feedparser.on('error', function (error) {
+        bot.sendMessage('feedparser err')
+        // always handle errors
+    });
+
+    feedparser.on('readable', function () {
+        //console.log('readble')
+        // This is where the action is!
+        var stream = this; // `this` is `feedparser`, which is a stream
+        var meta = this.meta; // **NOTE** the "meta" is always available in the context of the feedparser instance
+        var item;
+
+        while (item = stream.read()) {
+            //bot.sendMessage(id, '10')
+            ret.push(item.link)
+        }
+        return ret
+    });
+    console.log('ret', ret)
+}
+
+function createPolling(feed, delay) {
     var polling = AsyncPolling(function (end) {
-        console.log('index', index)
-        req = request('http://goings0lo.mihanblog.com/post/rss/')
+        req = request(feed.link)
         var feedparser = new FeedParser([]);
-        console.log('new request')
-
         req.on('error', function (error) {
             end('error on request')
             //bot.sendMessage(id, 'error on request')
@@ -80,29 +162,24 @@ function createPolling(index) {
             var stream = this; // `this` is `req`, which is a stream
 
             if (res.statusCode !== 200) {
-                bot.sendMessage(index, 'err'+str(new Error('Bad status code')))
+                console.log('err'+str(new Error('Bad status code')))
             }
             else {
                 stream.pipe(feedparser);
-                end(null, {'feedparser': feedparser,
-                    'index': index})
+                end(null, stream)
             }
         });
 
 
-    }, 10000);
+    }, delay);
 
     polling.on('error', function (error) {
         console.log('in polling err')
     });
     polling.on('result', function (result) {
-        console.log('in result')
-        feedparser = result.feedparser
-        chatId = result.index
-        console.log('chatId', chatId)
+        feedparser = result
 
         feedparser.on('error', function (error) {
-            bot.sendMessage(chatId, 'feedparser err')
             // always handle errors
         });
 
@@ -116,12 +193,12 @@ function createPolling(index) {
             while (item = stream.read()) {
                 //bot.sendMessage(id, '10')
                 var link = item.link
-                if(feed[chatId].find(function (e) {
+                if(feed.posts.find(function (e) {
                         return e == link
                     }) != undefined) {
                     continue
                 }
-                feed[chatId].push(item.link)
+                feed.posts.push(item.link)
 
                 var text = htmlToText.fromString(item.description, {
                     wordwrap: null
@@ -135,8 +212,12 @@ function createPolling(index) {
                         sendText = text.slice(i*4096, (i+1)*4096)
                     }
                     try {
-                        if(sendText.length > 0)
-                            bot.sendMessage(chatId, sendText)
+                        if(sendText.length > 0) {
+                            feed.populate('users').exec(function (err, feed) {
+                                for(var i = 0; i < feed.users.length; i++)
+                                    bot.sendMessage(feed.users[i].chatId, sendText)
+                            })
+                        }
                     }
                     catch (error) {
                         console.log("Something went wrong: ", error);
