@@ -17,10 +17,11 @@ db.once('open', function() {
 
 var userSchema = mongoose.Schema({
     chatId: Number,
-    subscription: Number
+    subscription: Number,
+    feeds: [{type: mongoose.Schema.Types.ObjectId, ref: 'feedModel'}]
 });
 
-var userModel = mongoose.model('userModel', userSchema)
+
 
 var feedSchema = mongoose.Schema({
     link: String,
@@ -28,6 +29,7 @@ var feedSchema = mongoose.Schema({
     users: [{type: mongoose.Schema.Types.ObjectId, ref: 'userModel'}]
 })
 
+var userModel = mongoose.model('userModel', userSchema)
 var feedModel = mongoose.model('feedModel', feedSchema)
 
 feedModel.find({}, function (err, result) {
@@ -40,8 +42,6 @@ feedModel.find({}, function (err, result) {
 userModel.find({}, function (err, result) {
     console.log('users: ', result)
 })
-
-
 
 
 // replace the value below with the Telegram token you receive from @BotFather
@@ -62,13 +62,26 @@ bot.on('message', (msg) => {
             }
             console.log(user)
             if(user.length == 0) {
-                createNewUser(chatId)
+                createNewUser(chatId, msg)
             } else {
                 bot.sendMessage(chatId, 'شما قبلا ثبت نام کرده‌اید!')
+                userModel.findOne({chatId: chatId}).populate('feeds').exec(function (err, user) {
+                    var sites = ''
+                    for(var i = 0; i < user.feeds.length; i++) {
+                        sites = (i+1).toString() + '. ' + sites + user.feeds[i].link + '\n'
+                    }
+                    if(user.feeds.length == 0) {
+                        bot.sendMessage(chatId, 'هیچ سایتی در خبرخوان شما ثبت نشده است. برای اضافه کردن سایت پیامی مشابه زیر به ربات ارسال کنید\u{1F60A}'
+                        +'\n'+'add www.example.com/rss')
+                    } else {
+                        bot.sendMessage(chatId, 'تا کنون سایت‌های زیر به خبرخوان شما اضافه شده اند \u{1F60A}'
+                            +'\n'+sites)
+                    }
+                })
             }
         })
-    } else if(msg.text.slice(0, 7) == 'addfeed') {
-        var site = msg.text.slice(8, msg.text.length)
+    } else if(msg.text.slice(0, 3) == 'add') {
+        var site = msg.text.slice(4, msg.text.length)
         site = site.replace(/\s/g, '')
         console.log('site', site, '10')
         var prefix = 'http://';
@@ -84,7 +97,7 @@ bot.on('message', (msg) => {
         var chatUser
         userModel.find({chatId: chatId}, function (err, user) {
             if(user.length == 0) {
-                chatUser = createNewUser(chatId)
+                chatUser = createNewUser(chatId, msg)
             } else {
                 chatUser = user[0]
             }
@@ -112,13 +125,16 @@ bot.on('message', (msg) => {
             })
         })
     } else if(msg.text == '/help') {
-        bot.sendMessage(chatId, 'برای اضافه کردن سایت به خبرخوان پیامی مشابه زیر بفرستید:' +
-            '\n'+'addfeed www.example.com/rss')
+        bot.sendMessage(chatId, '\u{2757}برای اضافه کردن سایت به خبرخوان پیامی مشابه زیر به ربات ارسال کنید \u{1F60A}' +
+            '\n'+'add www.example.com/rss')
+    } else {
+        bot.sendMessage(chatId, '\u{2757}برای اضافه کردن سایت به خبرخوان پیامی مشابه زیر به ربات ارسال کنید \u{1F60A}' +
+            '\n'+'add www.example.com/rss')
     }
 })
 
-function createNewUser(chatId) {
-    bot.sendMessage(chatId, 'به ربات خبرخوان خوش آمدی خر!')
+function createNewUser(chatId, msg) {
+    bot.sendMessage(chatId, msg.from.first_name+'! به ربات خبرخوان خوش آمدی!')
     var newUser = new userModel({chatId: chatId, subscription: 0})
     newUser.save(function (err) {
         if(err) {
@@ -229,16 +245,18 @@ function createPolling(feed, delay) {
                 var text = htmlToText.fromString(item.description, {
                     wordwrap: null
                 })
-                var messageNumber = Math.ceil(text.length / 4096.0)
+                var chunkSize = 4096 - item.link - 15
+                var messageNumber = Math.ceil(text.length / chunkSize)
                 for(var i = 0; i < messageNumber; i++) {
                     var sendText
-                    if(text.length - i*4096 < 4096) {
-                        sendText = text.slice(i*4096, text.length - i*4096)
+                    if(text.length - i*chunkSize < chunkSize) {
+                        sendText = text.slice(i*chunkSize, text.length - i*chunkSize)
                     } else {
-                        sendText = text.slice(i*4096, (i+1)*4096)
+                        sendText = text.slice(i*chunkSize, (i+1)*chunkSize)
                     }
                     try {
                         if(sendText.length > 0) {
+                            sendText = 'لینک پست: ' + item.link + '\n' + sendText
                             feedModel.findOne({_id: feed._id}).populate('users').exec(function (err, feedf) {
                                 for(var i = 0; i < feedf.users.length; i++) {
                                     bot.sendMessage(feedf.users[i].chatId, sendText)
