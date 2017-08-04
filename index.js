@@ -1,4 +1,32 @@
 const TelegramBot = require('node-telegram-bot-api');
+var FeedParser = require('feedparser');
+var request = require('request'); // for fetching the feed
+var htmlToText = require('html-to-text');
+var AsyncPolling = require('async-polling');
+var mongoose = require('mongoose');
+mongoose.connect('mongodb://localhost/test');
+var db = mongoose.connection;
+db.on('error', console.error.bind(console, 'connection error:'));
+db.once('open', function() {
+    console.log('db connect')
+});
+
+var userSchema = mongoose.Schema({
+    chatId: Number,
+    subscription: Number
+});
+
+var userModel = mongoose.model(userSchema)
+
+var feedSchema = mongoose.Schema({
+    links: [String],
+    users: [{type: mongoose.Schema.Types.ObjectId, ref: 'userModel'}]
+})
+
+var feedModel = mongoose.model(feedSchema)
+
+
+
 
 // replace the value below with the Telegram token you receive from @BotFather
 const token = '330066489:AAG1eTsaceto4eUrsKoE1TUngTX3UV17j8k';
@@ -9,14 +37,10 @@ var feed = []
 let id = 0
 
 bot.onText(/\/start/, (msg) => {
-    /* bot.sendMessage(msg.chat.id, "گزینه‌ی مورد نظر خود را انتخاب کنید.", {
-        "reply_markup": {
-            "keyboard": [["ساخت فرم"]]
-        }
-    }) */
-
-    feed[msg.chat.id] = []
-    createPolling(msg.chat.id);
+    bot.sendMessage(msg.chat.id, 'به ربات خبرخوان خوش آمده‌اید!')
+    var newUser = new userModel({chatId: msg.chat.id, subscription: 0})
+    //feed[msg.chat.id] = []
+    //createPolling(msg.chat.id)
 })
 
 
@@ -104,18 +128,3 @@ function createPolling(index) {
 
     polling.run()
 }
-
-var FeedParser = require('feedparser');
-var request = require('request'); // for fetching the feed
-var htmlToText = require('html-to-text');
-var AsyncPolling = require('async-polling');
-
-
-
-
-
-
-
-
-
- // Let's start polling.
