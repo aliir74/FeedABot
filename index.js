@@ -4,7 +4,7 @@ var request = require('request'); // for fetching the feed
 var htmlToText = require('html-to-text');
 var AsyncPolling = require('async-polling');
 var mongoose = require('mongoose');
-mongoose.connect('mongodb://localhost/ttt');
+mongoose.connect('mongodb://localhost/t11');
 var db = mongoose.connection;
 db.on('error', console.error.bind(console, 'connection error:'));
 db.once('open', function() {
@@ -61,14 +61,6 @@ bot.on('message', (msg) => {
             }
         })
     } else if(msg.text.slice(0, 8) == '/addfeed') {
-        var chatUser
-        userModel.find({chatId: chatId}, function (err, user) {
-            if(user.length == 0) {
-                chatUser = createNewUser(chatId)
-            } else {
-                chatUser = user[0]
-            }
-        })
         var site = msg.text.slice(9, msg.text.length)
         site = site.replace(/\s/g, '')
         var prefix = 'http://';
@@ -76,21 +68,34 @@ bot.on('message', (msg) => {
         {
             site = prefix + site;
         }
-        feedModel.find({link: site}, function (err, feed) {
-            if(feed.length == 0) {
-                var posts = getRssPostLinks(site)
-                var siteFeed = new feedModel({link: site, posts: posts, users: [chatUser]})
-                siteFeed.save(function (err) {
-                    if(err) {
-                        console.log('site feed err: '+ siteFeed)
-                    } else {
-                        console.log('site feed saved: '+ siteFeed)
-                    }
-                })
-                createPolling(siteFeed, 10000)
+        var chatUser
+        userModel.find({chatId: chatId}, function (err, user) {
+            if(user.length == 0) {
+                chatUser = createNewUser(chatId)
             } else {
-                feed[0].users.push(chatUser)
+                chatUser = user[0]
             }
+            feedModel.find({link: site}, function (err, feed) {
+                if(feed.length == 0) {
+                    var posts = []
+                    var siteFeed = new feedModel({link: site, posts: posts, users: [chatUser._id]})
+                    updatePostLinks(siteFeed)
+                    siteFeed.save(function (err) {
+                        if(err) {
+                            console.log('site feed err: '+ siteFeed)
+                        } else {
+                            console.log('site feed saved: '+ siteFeed)
+                        }
+                    })
+                    setTimeout(function () {
+                        console.log('start Poling')
+                        createPolling(siteFeed, 10000)
+                    }, 10000);
+
+                } else {
+                    feed[0].users.push(chatUser._id)
+                }
+            })
         })
     }
 })
@@ -109,9 +114,8 @@ function createNewUser(chatId) {
     return newUser
 }
 
-function getRssPostLinks(url) {
-    var ret = []
-    req = request(url)
+function updatePostLinks(feed) {
+    req = request(feed.link)
     var feedparser = new FeedParser([]);
 
     req.on('error', function (error) {
@@ -122,7 +126,7 @@ function getRssPostLinks(url) {
         var stream = this; // `this` is `req`, which is a stream
 
         if (res.statusCode !== 200) {
-            bot.sendMessage(index, 'err'+str(new Error('Bad status code')))
+            bot.sendMessage(index, 'err')
         }
         else {
             stream.pipe(feedparser);
@@ -134,19 +138,18 @@ function getRssPostLinks(url) {
     });
 
     feedparser.on('readable', function () {
-        //console.log('readble')
+        console.log('readble')
         // This is where the action is!
         var stream = this; // `this` is `feedparser`, which is a stream
         var meta = this.meta; // **NOTE** the "meta" is always available in the context of the feedparser instance
         var item;
 
         while (item = stream.read()) {
+            console.log(item.link)
             //bot.sendMessage(id, '10')
-            ret.push(item.link)
+            feed.posts.push(item.link)
         }
-        return ret
-    });
-    console.log('ret', ret)
+    })
 }
 
 function createPolling(feed, delay) {
@@ -166,7 +169,7 @@ function createPolling(feed, delay) {
             }
             else {
                 stream.pipe(feedparser);
-                end(null, stream)
+                end(null, feedparser)
             }
         });
 
@@ -178,6 +181,7 @@ function createPolling(feed, delay) {
     });
     polling.on('result', function (result) {
         feedparser = result
+        console.log('poling on')
 
         feedparser.on('error', function (error) {
             // always handle errors
@@ -213,10 +217,19 @@ function createPolling(feed, delay) {
                     }
                     try {
                         if(sendText.length > 0) {
+                            console.log('feed_id: ', feed._id)
+                            feedModel.findOne({_id: feed._id}).populate('users').exec(function (err, feedf) {
+                                for(var i = 0; i < feedf.users.length; i++) {
+                                    console.log(sendText.length)
+                                    bot.sendMessage(feedf.users[i].chatId, sendText)
+                                }
+                            })
+                            /*
                             feed.populate('users').exec(function (err, feed) {
                                 for(var i = 0; i < feed.users.length; i++)
                                     bot.sendMessage(feed.users[i].chatId, sendText)
                             })
+                            */
                         }
                     }
                     catch (error) {
