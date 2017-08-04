@@ -4,7 +4,11 @@ var request = require('request'); // for fetching the feed
 var htmlToText = require('html-to-text');
 var AsyncPolling = require('async-polling');
 var mongoose = require('mongoose');
-mongoose.connect('mongodb://localhost/t11');
+
+let pollingTime = 10000
+let startPollingDelay = 30000
+
+mongoose.connect('mongodb://localhost/t22');
 var db = mongoose.connection;
 db.on('error', console.error.bind(console, 'connection error:'));
 db.once('open', function() {
@@ -27,6 +31,9 @@ var feedSchema = mongoose.Schema({
 var feedModel = mongoose.model('feedModel', feedSchema)
 
 feedModel.find({}, function (err, result) {
+    result.forEach(function (item) {
+        createPolling(item, pollingTime)
+    })
     console.log('feeds: ', result)
 })
 
@@ -46,6 +53,9 @@ var feed = []
 let id = 0
 
 bot.on('message', (msg) => {
+    if(msg.text == "/addfeed") {
+        return
+    }
     const chatId = msg.chat.id;
     if(msg.text == "/start") {
         userModel.find({chatId: chatId}, function (err, user) {
@@ -89,8 +99,8 @@ bot.on('message', (msg) => {
                             }
                         })
                         console.log('start Poling')
-                        createPolling(siteFeed, 10000)
-                    }, 30000);
+                        createPolling(siteFeed, pollingTime)
+                    }, startPollingDelay);
 
                 } else {
                     feed[0].users.push(chatUser._id)
@@ -102,7 +112,7 @@ bot.on('message', (msg) => {
 })
 
 function createNewUser(chatId) {
-    bot.sendMessage(chatId, 'به ربات خبرخوان خوش آمدید!')
+    bot.sendMessage(chatId, 'به ربات خبرخوان خوش آمدی خر!')
     var newUser = new userModel({chatId: chatId, subscription: 0})
     newUser.save(function (err) {
         if(err) {
@@ -117,6 +127,7 @@ function createNewUser(chatId) {
 
 function updatePostLinks(feed) {
     req = request(feed.link)
+
     var feedparser = new FeedParser([]);
 
     req.on('error', function (error) {
