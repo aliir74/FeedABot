@@ -8,7 +8,7 @@ var mongoose = require('mongoose');
 let pollingTime = 10000
 let startPollingDelay = 30000
 
-mongoose.connect('mongodb://localhost/t22');
+mongoose.connect('mongodb://localhost/t28');
 var db = mongoose.connection;
 db.on('error', console.error.bind(console, 'connection error:'));
 db.once('open', function() {
@@ -71,8 +71,8 @@ bot.on('message', (msg) => {
                         sites = (i+1).toString() + '. ' + sites + user.feeds[i].link + '\n'
                     }
                     if(user.feeds.length == 0) {
-                        bot.sendMessage(chatId, 'هیچ سایتی در خبرخوان شما ثبت نشده است. برای اضافه کردن سایت پیامی مشابه زیر به ربات ارسال کنید\u{1F60A}'
-                        +'\n'+'add www.example.com/rss')
+                        bot.sendMessage(chatId, "هیچ سایتی در خبرخوان شما ثبت نشده است. برای اضافه کردن سایت پیامی مشابه زیر به ربات ارسال کنید \u{1F60A}"
+                        +"\n"+"add www.example.com/rss"+"\n\n"+"\u{2757}"+" توجه کنید که حتما نسخه‌ی مخصوص خبرخوان سایت را وارد کنید نه آدرس اصلی"+"\u{2757}")
                     } else {
                         bot.sendMessage(chatId, 'تا کنون سایت‌های زیر به خبرخوان شما اضافه شده اند \u{1F60A}'
                             +'\n'+sites)
@@ -93,6 +93,8 @@ bot.on('message', (msg) => {
             bot.sendMessage(chatId, "'"+site+"' isnt a valid url!")
             return
         }
+        if(site[site.length-1] == '/')
+            site = site.slice(0, site.length-1)
         console.log('site', site, '10')
         var chatUser
         userModel.find({chatId: chatId}, function (err, user) {
@@ -105,7 +107,8 @@ bot.on('message', (msg) => {
                 if(feed.length == 0) {
                     var posts = []
                     var siteFeed = new feedModel({link: site, posts: posts, users: [chatUser._id]})
-                    updatePostLinks(siteFeed)
+                    updatePostLinks(siteFeed, chatId)
+                    bot.sendMessage(chatId, 'سایت '+siteFeed.link+' به خبرخوان شما اضافه شد '+'\u{1F60A}')
                     setTimeout(function () {
                         siteFeed.save(function (err) {
                             if(err) {
@@ -115,26 +118,30 @@ bot.on('message', (msg) => {
                             }
                         })
                         console.log('start Poling')
+                        chatUser.feeds.push(siteFeed._id)
+                        chatUser.save()
                         createPolling(siteFeed, pollingTime)
                     }, startPollingDelay);
 
                 } else {
                     feed[0].users.push(chatUser._id)
                     feed[0].save()
+                    chatUser.feeds.push(feed[0]._id)
+                    chatUser.save()
                 }
             })
         })
     } else if(msg.text == '/help') {
-        bot.sendMessage(chatId, '\u{2757}برای اضافه کردن سایت به خبرخوان پیامی مشابه زیر به ربات ارسال کنید \u{1F60A}' +
-            '\n'+'add www.example.com/rss')
+        bot.sendMessage(chatId, "برای اضافه کردن سایت به خبر خوان پیامی مشابه زیر به ربات ارسال کنید \u{1F60A}"
+            +"\n"+"add www.example.com/rss"+"\n\n"+"\u{2757}"+" توجه کنید که حتما نسخه‌ی مخصوص خبرخوان سایت را وارد کنید نه آدرس اصلی"+"\u{2757}")
     } else {
-        bot.sendMessage(chatId, '\u{2757}برای اضافه کردن سایت به خبرخوان پیامی مشابه زیر به ربات ارسال کنید \u{1F60A}' +
-            '\n'+'add www.example.com/rss')
+        bot.sendMessage(chatId, "برای اضافه کردن سایت به خبر خوان پیامی مشابه زیر به ربات ارسال کنید \u{1F60A}"
+            +"\n"+"add www.example.com/rss"+"\n\n"+"\u{2757}"+" توجه کنید که حتما نسخه‌ی مخصوص خبرخوان سایت را وارد کنید نه آدرس اصلی"+"\u{2757}")
     }
 })
 
 function createNewUser(chatId, msg) {
-    bot.sendMessage(chatId, msg.from.first_name+'! به ربات خبرخوان خوش آمدی!')
+    bot.sendMessage(chatId, msg.from.first_name+'!\n'+'به ربات خبرخوان خوش آمدی!')
     var newUser = new userModel({chatId: chatId, subscription: 0})
     newUser.save(function (err) {
         if(err) {
@@ -147,7 +154,7 @@ function createNewUser(chatId, msg) {
     return newUser
 }
 
-function updatePostLinks(feed) {
+function updatePostLinks(feed, chatId) {
     req = request(feed.link)
     if(req instanceof Error) {
         console.log('request err', err)
@@ -163,7 +170,7 @@ function updatePostLinks(feed) {
         var stream = this; // `this` is `req`, which is a stream
 
         if (res.statusCode !== 200) {
-            bot.sendMessage(index, 'err')
+            bot.sendMessage(chatId, 'سایت شما معتبر نیست!')
         }
         else {
             stream.pipe(feedparser);
@@ -203,7 +210,7 @@ function createPolling(feed, delay) {
             var stream = this; // `this` is `req`, which is a stream
 
             if (res.statusCode !== 200) {
-                console.log('err'+str(new Error('Bad status code')))
+                console.log('err status code')
             }
             else {
                 stream.pipe(feedparser);
