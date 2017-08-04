@@ -80,20 +80,21 @@ bot.on('message', (msg) => {
                     var posts = []
                     var siteFeed = new feedModel({link: site, posts: posts, users: [chatUser._id]})
                     updatePostLinks(siteFeed)
-                    siteFeed.save(function (err) {
-                        if(err) {
-                            console.log('site feed err: '+ siteFeed)
-                        } else {
-                            console.log('site feed saved: '+ siteFeed)
-                        }
-                    })
                     setTimeout(function () {
+                        siteFeed.save(function (err) {
+                            if(err) {
+                                console.log('site feed err: '+ siteFeed)
+                            } else {
+                                console.log('site feed saved: '+ siteFeed)
+                            }
+                        })
                         console.log('start Poling')
                         createPolling(siteFeed, 10000)
-                    }, 10000);
+                    }, 30000);
 
                 } else {
                     feed[0].users.push(chatUser._id)
+                    feed[0].save()
                 }
             })
         })
@@ -107,7 +108,7 @@ function createNewUser(chatId) {
         if(err) {
             console.log(err)
         } else {
-            console.log('saved')
+            console.log('new user saved')
         }
     })
     console.log(newUser)
@@ -138,17 +139,14 @@ function updatePostLinks(feed) {
     });
 
     feedparser.on('readable', function () {
-        console.log('readble')
-        // This is where the action is!
         var stream = this; // `this` is `feedparser`, which is a stream
         var meta = this.meta; // **NOTE** the "meta" is always available in the context of the feedparser instance
         var item;
 
         while (item = stream.read()) {
-            console.log(item.link)
-            //bot.sendMessage(id, '10')
             feed.posts.push(item.link)
         }
+        feed.save()
     })
 }
 
@@ -188,7 +186,6 @@ function createPolling(feed, delay) {
         });
 
         feedparser.on('readable', function () {
-            //console.log('readble')
             // This is where the action is!
             var stream = this; // `this` is `feedparser`, which is a stream
             var meta = this.meta; // **NOTE** the "meta" is always available in the context of the feedparser instance
@@ -203,6 +200,7 @@ function createPolling(feed, delay) {
                     continue
                 }
                 feed.posts.push(item.link)
+                feed.save()
 
                 var text = htmlToText.fromString(item.description, {
                     wordwrap: null
@@ -217,10 +215,8 @@ function createPolling(feed, delay) {
                     }
                     try {
                         if(sendText.length > 0) {
-                            console.log('feed_id: ', feed._id)
                             feedModel.findOne({_id: feed._id}).populate('users').exec(function (err, feedf) {
                                 for(var i = 0; i < feedf.users.length; i++) {
-                                    console.log(sendText.length)
                                     bot.sendMessage(feedf.users[i].chatId, sendText)
                                 }
                             })
