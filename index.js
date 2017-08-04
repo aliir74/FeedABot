@@ -53,9 +53,6 @@ var feed = []
 let id = 0
 
 bot.on('message', (msg) => {
-    if(msg.text == "/addfeed") {
-        return
-    }
     const chatId = msg.chat.id;
     if(msg.text == "/start") {
         userModel.find({chatId: chatId}, function (err, user) {
@@ -70,14 +67,20 @@ bot.on('message', (msg) => {
                 bot.sendMessage(chatId, 'شما قبلا ثبت نام کرده‌اید!')
             }
         })
-    } else if(msg.text.slice(0, 8) == '/addfeed') {
-        var site = msg.text.slice(9, msg.text.length)
+    } else if(msg.text.slice(0, 7) == 'addfeed') {
+        var site = msg.text.slice(8, msg.text.length)
         site = site.replace(/\s/g, '')
+        console.log('site', site, '10')
         var prefix = 'http://';
         if (site.substr(0, prefix.length) !== prefix)
         {
             site = prefix + site;
         }
+        if(!ValidURL(site)) {
+            bot.sendMessage(chatId, "'"+site+"' isnt a valid url!")
+            return
+        }
+        console.log('site', site, '10')
         var chatUser
         userModel.find({chatId: chatId}, function (err, user) {
             if(user.length == 0) {
@@ -108,6 +111,9 @@ bot.on('message', (msg) => {
                 }
             })
         })
+    } else if(msg.text == '/help') {
+        bot.sendMessage(chatId, 'برای اضافه کردن سایت به خبرخوان پیامی مشابه زیر بفرستید:' +
+            '\n'+'addfeed www.example.com/rss')
     }
 })
 
@@ -127,7 +133,10 @@ function createNewUser(chatId) {
 
 function updatePostLinks(feed) {
     req = request(feed.link)
-
+    if(req instanceof Error) {
+        console.log('request err', err)
+        return
+    }
     var feedparser = new FeedParser([]);
 
     req.on('error', function (error) {
@@ -164,6 +173,10 @@ function updatePostLinks(feed) {
 function createPolling(feed, delay) {
     var polling = AsyncPolling(function (end) {
         req = request(feed.link)
+        if(req instanceof Error) {
+            console.log('request err', err)
+            return
+        }
         var feedparser = new FeedParser([]);
         req.on('error', function (error) {
             end('error on request')
@@ -248,4 +261,13 @@ function createPolling(feed, delay) {
     });
 
     polling.run()
+}
+
+function ValidURL(str) {
+    var pattern = /(ftp|http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-\/]))?/;
+    if(!pattern.test(str)) {
+        return false;
+    } else {
+        return true;
+    }
 }
